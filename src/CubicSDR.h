@@ -60,6 +60,10 @@
 class RigThread;
 #endif
 
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+#include "WebSocketServerThread.h"
+#endif
+
 #include <wx/cmdline.h>
 
 #define NUM_DEMODULATORS 1
@@ -184,6 +188,10 @@ public:
     void stopRig();
     bool rigIsActive();
 #endif
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    WebSocketServerThread *getWebSocketThread();
+#endif
     
 private:
     int FilterEvent(wxEvent& event) override;
@@ -251,6 +259,15 @@ private:
 #ifdef USE_HAMLIB
     RigThread* rigThread = nullptr;
     std::thread *t_Rig = nullptr;
+#endif
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    WebSocketServerThread *webSocketThread = nullptr;
+    std::thread *t_WebSocket = nullptr;
+    std::shared_ptr<SpectrumVisualDataQueue> pipeWSSpectrumData;
+    std::shared_ptr<SpectrumVisualDataQueue> pipeWSWaterfallData;
+    std::shared_ptr<DemodulatorThreadOutputQueue> pipeWSAudioData;
+    std::shared_ptr<DemodulatorThreadInputQueue> pipeWSIQData;
 #endif
 
     void initAudioDevices() const;

@@ -32,6 +32,9 @@ protected:
     DemodulatorThreadInputQueuePtr iqDataOutQueue;
     DemodulatorThreadInputQueuePtr iqVisualQueue;
     DemodulatorThreadInputQueuePtr iqActiveDemodVisualQueue;
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    DemodulatorThreadInputQueuePtr iqWebSocketQueue;
+#endif
 
 private:
     // Copy the full samplerate into a new DemodulatorThreadIQDataPtr.

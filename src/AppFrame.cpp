@@ -267,6 +267,13 @@ AppFrame::AppFrame() :
     waterfallDataThread->setOutputQueue("FFTDataOutput", waterfallCanvas->getVisualDataQueue());
     waterfallDataThread->getProcessor()->setHideDC(true);
 
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    if (wxGetApp().getWebSocketThread()) {
+        waterfallDataThread->getProcessor()->attachOutput(
+            wxGetApp().getWebSocketThread()->getWaterfallQueue());
+    }
+#endif
+
     t_FFTData = new std::thread(&FFTVisualDataThread::threadMain, waterfallDataThread);
 
 
@@ -1184,7 +1191,7 @@ void AppFrame::handleUpdateDeviceParams() {
         sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->Enable(false);
     }
     else {
-        sampleRateMenuItems[wxID_BANDWIDTH_MANUAL] = newSampleRateMenu->AppendRadioItem(wxID_BANDWIDTH_MANUAL, wxT("Manual :  ") + frequencyToStr(manualSampleRate));
+        sampleRateMenuItems[wxID_BANDWIDTH_MANUAL] = newSampleRateMenu->AppendRadioItem(wxID_BANDWIDTH_MANUAL, wxString("Manual :  ") + frequencyToStr(manualSampleRate));
         sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->Enable(true);
     }
 
@@ -1606,7 +1613,7 @@ bool AppFrame::actionOnMenuSampleRate(wxCommandEvent& event) {
                 manualSampleRate = bw;
                 sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->Enable(true);
 
-                sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->SetItemLabel(wxT("Manual :  ") + frequencyToStr(manualSampleRate));
+                sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->SetItemLabel(wxString("Manual :  ") + frequencyToStr(manualSampleRate));
                 sampleRateMenuItems[wxID_BANDWIDTH_MANUAL]->Check(true);
                 wxGetApp().setSampleRate(manualSampleRate);
             }

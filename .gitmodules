@@ -1,0 +1,6 @@
+[submodule "external/uSockets"]
+	path = external/uSockets
+	url = https://github.com/uNetworking/uSockets.git
+[submodule "external/uWebSockets"]
+	path = external/uWebSockets
+	url = https://github.com/uNetworking/uWebSockets.git

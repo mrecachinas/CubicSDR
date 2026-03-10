@@ -93,6 +93,8 @@ ENDIF()
 
 set(USE_HAMLIB OFF CACHE BOOL "Support hamlib for radio control functions.")
 
+set(USE_WEBSOCKET OFF CACHE BOOL "Enable WebSocket server for streaming data to web clients.")
+
 if (USE_HAMLIB)
     find_package(hamlib REQUIRED)
     
@@ -104,6 +106,45 @@ if (USE_HAMLIB)
     link_libraries(${HAMLIB_LIBRARY})
 
     ADD_DEFINITIONS(-DUSE_HAMLIB)        
+endif ()
+
+if (USE_WEBSOCKET)
+    find_package(ZLIB REQUIRED)
+
+    # uSockets source files (C library)
+    set(USOCKETS_DIR "${PROJECT_SOURCE_DIR}/external/uSockets")
+    set(USOCKETS_SOURCES
+        ${USOCKETS_DIR}/src/context.c
+        ${USOCKETS_DIR}/src/loop.c
+        ${USOCKETS_DIR}/src/socket.c
+        ${USOCKETS_DIR}/src/bsd.c
+        ${USOCKETS_DIR}/src/eventing/epoll_kqueue.c
+    )
+
+    add_library(uSockets STATIC ${USOCKETS_SOURCES})
+    target_include_directories(uSockets PUBLIC
+        ${USOCKETS_DIR}/src
+    )
+    target_link_libraries(uSockets ${ZLIB_LIBRARIES})
+    set_target_properties(uSockets PROPERTIES
+        C_STANDARD 11
+        POSITION_INDEPENDENT_CODE ON
+    )
+    target_compile_definitions(uSockets PRIVATE
+        LIBUS_NO_SSL
+        $<$<BOOL:${APPLE}>:LIBUS_USE_KQUEUE>
+        $<$<AND:$<BOOL:${UNIX}>,$<NOT:$<BOOL:${APPLE}>>>:LIBUS_USE_EPOLL>
+    )
+
+    # uWebSockets is header-only; just add include paths
+    include_directories(
+        ${PROJECT_SOURCE_DIR}/external/uWebSockets/src
+        ${USOCKETS_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+
+    link_libraries(uSockets ${ZLIB_LIBRARIES})
+    ADD_DEFINITIONS(-DCUBICSDR_ENABLE_WEBSOCKET -DLIBUS_NO_SSL)
 endif ()
 
 macro(configure_files srcDir destDir globStr)
@@ -162,8 +203,10 @@ IF (MSVC)
     SET(LIQUID_DLL "${PROJECT_SOURCE_DIR}/external/liquid-dsp/msvc/${EX_PLATFORM}/libliquid.dll" CACHE STRING "Liquid-DSP DLL")
     SET(HAMLIB_DLLS "${PROJECT_SOURCE_DIR}/external/hamlib/${EX_PLATFORM}/libhamlib-4.dll" CACHE STRING "HAMLIB DLLS")
 ELSE (MSVC)
-    ADD_DEFINITIONS(
-        -std=c++0x 
+    # Use add_compile_options with language guard so -std=c++0x
+    # does not leak into C targets (e.g. uSockets).
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:-std=c++0x>
         -pthread
     )
 ENDIF(MSVC)
@@ -586,6 +629,22 @@ IF (USE_HAMLIB)
     )
 ENDIF()
 
+IF (USE_WEBSOCKET)
+    SET (cubicsdr_headers
+        ${cubicsdr_headers}
+        src/server/WebSocketProtocol.h
+        src/server/WebSocketServerThread.h
+    )
+    SET (cubicsdr_sources
+        ${cubicsdr_sources}
+        src/server/WebSocketServerThread.cpp
+    )
+    # uWebSockets requires C++17
+    set_source_files_properties(src/server/WebSocketServerThread.cpp
+        PROPERTIES COMPILE_FLAGS "-std=c++17"
+    )
+ENDIF()
+
 
 SET (CUBICSDR_FONTS 
     ${PROJECT_SOURCE_DIR}/font/vera_sans_mono12.fnt
@@ -639,6 +698,9 @@ SOURCE_GROUP("UI" REGULAR_EXPRESSION "src/ui/${REG_EXT}")
 SOURCE_GROUP("_ext-LodePNG" REGULAR_EXPRESSION "external/lodepng/.*${REG_EXT}")
 SOURCE_GROUP("_ext-TinyXML" REGULAR_EXPRESSION "external/tinyxml/.*${REG_EXT}")
 SOURCE_GROUP("_ext-CubicVR2" REGULAR_EXPRESSION "external/cubicvr2/.*${REG_EXT}")
+IF (USE_WEBSOCKET)
+SOURCE_GROUP("Server" REGULAR_EXPRESSION "src/server/${REG_EXT}")
+ENDIF()
 
 include_directories ( 
     ${PROJECT_SOURCE_DIR}/src/forms/SDRDevices
@@ -658,6 +720,7 @@ include_directories (
     ${PROJECT_SOURCE_DIR}/src/process
     ${PROJECT_SOURCE_DIR}/src/ui
     ${PROJECT_SOURCE_DIR}/src/rig
+    ${PROJECT_SOURCE_DIR}/src/server
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/external/lodepng 
     ${PROJECT_SOURCE_DIR}/external/tinyxml
@@ -743,9 +806,11 @@ IF (APPLE AND BUNDLE_APP)
         ENDIF()
     ENDIF()
     
-    ADD_DEFINITIONS(
-        -std=c++0x 
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:-std=c++0x>
         -pthread
+    )
+    ADD_DEFINITIONS(
         -D_OSX_APP_
     )   
       

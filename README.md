@@ -24,6 +24,32 @@ Optional Libs:
 --------
   - FFTW3 (can be compiled into liquid-dsp if desired) (http://www.fftw.org/ -- https://github.com/FFTW/fftw3)
   - hamlib (https://github.com/Hamlib/Hamlib)
+  - uWebSockets + uSockets for WebSocket streaming (https://github.com/uNetworking/uWebSockets)
+
+WebSocket Streaming:
+--------------------
+
+CubicSDR can optionally stream real-time data to web clients via WebSocket. Enable with:
+
+```
+cmake .. -DUSE_WEBSOCKET=ON
+```
+
+**Requirements:** zlib (typically already available on most systems).
+
+**Streams available:**
+  - `spectrum` — FFT magnitude data (float32 array)
+  - `waterfall` — Waterfall line data (float32 array)
+  - `iq` — Raw IQ samples (interleaved complex float32)
+  - `audio` — Demodulated audio samples (placeholder, future enhancement)
+
+**Default port:** 9002 (configurable via AppConfig).
+
+**Web test page:** Open `web/index.html` in a browser to connect and visualize data using [SigPlot](https://github.com/LGSInnovations/sigplot).
+
+**Wire protocol:**
+  - Control messages (subscribe/unsubscribe) use JSON text frames
+  - Sample data uses binary frames with a 24-byte header (magic `0x43534452`, stream type, data format, center freq, sample rate, sample count) followed by the payload
 
 Recommended minimum requirements:
 --------------------
