@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CubicSDR WebSocket Client</title>
+<script src="https://cdn.jsdelivr.net/npm/sigplot@3.1.1/dist/sigplot-debug.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #16213e;
+    --bg-panel: #1c1c30;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0b8;
+    --accent-green: #00e676;
+    --accent-cyan: #00e5ff;
+    --accent-red: #ff1744;
+    --accent-orange: #ff9100;
+    --border-color: #2a2a44;
+    --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    letter-spacing: 1px;
+  }
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-red);
+    transition: background 0.3s;
+  }
+  .status-dot.connected {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+  }
+
+  /* Connection bar */
+  .connection-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+  }
+  .connection-bar label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .connection-bar input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .connection-bar input[type="text"]:focus {
+    border-color: var(--accent-cyan);
+  }
+  .btn {
+    padding: 6px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { background: var(--bg-tertiary); border-color: var(--accent-cyan); }
+  .btn.connect { border-color: var(--accent-green); color: var(--accent-green); }
+  .btn.disconnect { border-color: var(--accent-red); color: var(--accent-red); }
+
+  /* Controls section */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 20px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+  }
+  .controls .group-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .stream-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .stream-toggle input[type="checkbox"] {
+    accent-color: var(--accent-cyan);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
+  .data-rate {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--accent-green);
+  }
+  .data-rate span { color: var(--accent-cyan); font-weight: 600; }
+
+  /* Plot area */
+  .plot-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    padding: 2px;
+    min-height: 0;
+  }
+  .plot-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 280px;
+  }
+  .plot-panel .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent-cyan);
+  }
+  .panel-meta {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .plot-container {
+    flex: 1;
+    position: relative;
+    min-height: 220px;
+  }
+
+  /* Log */
+  .log-bar {
+    padding: 6px 20px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    font-size: 11px;
+    color: var(--text-secondary);
+    max-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-bar .log-entry { padding: 1px 0; }
+  .log-bar .log-entry.error { color: var(--accent-red); }
+  .log-bar .log-entry.info { color: var(--accent-cyan); }
+  .log-bar .log-entry.success { color: var(--accent-green); }
+
+  @media (max-width: 900px) {
+    .plot-grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: repeat(4, 1fr);
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>&#x25C8; CubicSDR WebSocket Client</h1>
+  <div class="status-indicator">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Disconnected</span>
+  </div>
+</div>
+
+<!-- Connection bar -->
+<div class="connection-bar">
+  <label>Server</label>
+  <input type="text" id="wsUrl" value="ws://localhost:9002" placeholder="ws://host:port">
+  <button class="btn connect" id="connectBtn" onclick="toggleConnection()">Connect</button>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <span class="group-label">Streams:</span>
+  <label class="stream-toggle">
+    <input type="checkbox" id="chkSpectrum" onchange="toggleStream('spectrum', this.checked)"> Spectrum
+  </label>
+  <label class="stream-toggle">
+    <input type="checkbox" id="chkWaterfall" onchange="toggleStream('waterfall', this.checked)"> Waterfall
+  </label>
+  <label class="stream-toggle">
+    <input type="checkbox" id="chkAudio" onchange="toggleStream('audio', this.checked)"> Audio
+  </label>
+  <label class="stream-toggle">
+    <input type="checkbox" id="chkIq" onchange="toggleStream('iq', this.checked)"> IQ
+  </label>
+  <div class="data-rate">
+    Data rate: <span id="dataRate">0</span> updates/sec
+  </div>
+</div>
+
+<!-- Plot grid -->
+<div class="plot-grid">
+  <div class="plot-panel">
+    <div class="panel-header">
+      Spectrum
+      <span class="panel-meta" id="spectrumMeta">—</span>
+    </div>
+    <div class="plot-container" id="spectrumPlot"></div>
+  </div>
+  <div class="plot-panel">
+    <div class="panel-header">
+      Waterfall
+      <span class="panel-meta" id="waterfallMeta">—</span>
+    </div>
+    <div class="plot-container" id="waterfallPlot"></div>
+  </div>
+  <div class="plot-panel">
+    <div class="panel-header">
+      Audio
+      <span class="panel-meta" id="audioMeta">—</span>
+    </div>
+    <div class="plot-container" id="audioPlot"></div>
+  </div>
+  <div class="plot-panel">
+    <div class="panel-header">
+      IQ
+      <span class="panel-meta" id="iqMeta">—</span>
+    </div>
+    <div class="plot-container" id="iqPlot"></div>
+  </div>
+</div>
+
+<!-- Log bar -->
+<div class="log-bar" id="logBar"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Protocol constants ──────────────────────────────────────────────
+  const MAGIC = 0x43534452;
+  const HEADER_SIZE = 24;
+
+  const STREAM_TYPES = { 0x01: 'spectrum', 0x02: 'waterfall', 0x03: 'audio', 0x04: 'iq' };
+  const DATA_FORMATS = { 0x01: 'float32', 0x02: 'complex_float32' };
+  const BYTES_PER_SAMPLE = { 0x01: 4, 0x02: 8 };
+
+  // ── State ───────────────────────────────────────────────────────────
+  let ws = null;
+  let plots = {};       // { spectrum: sigplot.Plot, ... }
+  let layers = {};      // { spectrum: layerN, ... }
+  let pipeHdrs = {};    // { spectrum: hdrObj, ... }
+  let msgCount = 0;
+  let rateInterval = null;
+
+  // ── DOM refs ────────────────────────────────────────────────────────
+  const statusDot  = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const wsUrlInput = document.getElementById('wsUrl');
+  const connectBtn = document.getElementById('connectBtn');
+  const dataRateEl = document.getElementById('dataRate');
+  const logBar     = document.getElementById('logBar');
+
+  // ── Logging ─────────────────────────────────────────────────────────
+  function log(msg, cls) {
+    const ts = new Date().toLocaleTimeString();
+    const el = document.createElement('div');
+    el.className = 'log-entry ' + (cls || '');
+    el.textContent = '[' + ts + '] ' + msg;
+    logBar.prepend(el);
+    while (logBar.children.length > 200) logBar.removeChild(logBar.lastChild);
+  }
+
+  // ── SigPlot initialisation ─────────────────────────────────────────
+  function initPlots() {
+    const darkSettings = {
+      all: true,
+      expand: true,
+      autol: 100,
+      cmode: 'MA',
+      phunits: 'D',
+      xcnt: 0,
+      colors: {
+        bg: '#1a1a2e',
+        fg: '#c0c0d0',
+        axes: '#505070'
+      }
+    };
+
+    // Spectrum — 1D line plot
+    plots.spectrum = new sigplot.Plot(
+      document.getElementById('spectrumPlot'),
+      Object.assign({}, darkSettings, {
+        autohide_panbars: true,
+        ylabel: 'Magnitude (dB)',
+        xlabel: 'Frequency (MHz)'
+      })
+    );
+
+    // Waterfall — 2D raster
+    plots.waterfall = new sigplot.Plot(
+      document.getElementById('waterfallPlot'),
+      Object.assign({}, darkSettings, {
+        autohide_panbars: true,
+        ylabel: 'Time',
+        xlabel: 'Frequency (MHz)'
+      })
+    );
+
+    // Audio — 1D time-domain
+    plots.audio = new sigplot.Plot(
+      document.getElementById('audioPlot'),
+      Object.assign({}, darkSettings, {
+        autohide_panbars: true,
+        ylabel: 'Amplitude',
+        xlabel: 'Time (samples)'
+      })
+    );
+
+    // IQ — constellation (scatter plot)
+    // Use minimal settings — extra options like cmode/autol/expand break XY mode
+    plots.iq = new sigplot.Plot(
+      document.getElementById('iqPlot'), {
+        autohide_panbars: true,
+        xmin: -5,
+        xmax: 5,
+        ymin: -5,
+        ymax: 5,
+        colors: {
+          bg: '#1a1a2e',
+          fg: '#c0c0d0',
+          axes: '#505070'
+        }
+      }
+    );
+  }
+
+  // Create (or recreate) a pipe layer for a given stream
+  function ensurePipe(stream, numSamples, centerFreq, sampleRate, dataFormat) {
+    var plot = plots[stream];
+    if (!plot) return;
+
+    var isComplex = (dataFormat === 0x02);
+    var frameSize = numSamples;
+
+    // Build pipe header
+    var hdr = {};
+
+    if (stream === 'waterfall') {
+      hdr = {
+        type: 2000,
+        subsize: frameSize,
+        format: 'SF',
+        xstart: (centerFreq - sampleRate / 2) / 1e6,
+        xdelta: (sampleRate / frameSize) / 1e6,
+        pipesize: frameSize * 128
+      };
+    } else if (stream === 'spectrum') {
+      hdr = {
+        size: frameSize,
+        xstart: (centerFreq - sampleRate / 2) / 1e6,
+        xdelta: (sampleRate / frameSize) / 1e6,
+        yunits: 26   // dB
+      };
+    } else if (stream === 'iq') {
+      // IQ constellation: complex float, cmode 5 = Real vs Imaginary
+      hdr = {
+        type: 1000,
+        format: 'CF'
+      };
+    } else {
+      // audio
+      hdr = {
+        size: frameSize,
+        xstart: 0,
+        xdelta: 1
+      };
+    }
+
+    // Only recreate pipe if parameters changed
+    var prev = pipeHdrs[stream];
+    var curSize = hdr.subsize || hdr.size;
+    var prevSize = prev ? (prev.subsize || prev.size) : null;
+    if (prev &&
+        prevSize === curSize &&
+        prev.xstart === hdr.xstart &&
+        prev.xdelta === hdr.xdelta &&
+        prev.type === hdr.type) {
+      return;
+    }
+
+    // Remove existing layers
+    if (layers[stream] !== undefined) {
+      plot.deoverlay();
+    }
+
+    pipeHdrs[stream] = hdr;
+
+    if (stream === 'iq') {
+      // IQ uses overlay_array + reload (not pipe) for constellation scatter
+      // Layer created on first data push in pushData()
+      return;
+    } else {
+      var pipeOpts = {};
+      if (stream === 'waterfall') {
+        pipeOpts = { opacity: 1.0 };
+      } else {
+        pipeOpts = { opacity: 0.9, line: 3, framesize: frameSize };
+      }
+      layers[stream] = plot.overlay_pipe(hdr, pipeOpts);
+    }
+  }
+
+  // Push data into the correct pipe
+  function pushData(stream, floatArray, dataFormat) {
+    var plot = plots[stream];
+    if (!plot) return;
+
+    if (stream === 'iq') {
+      // Downsample to max 1024 complex samples (2048 floats)
+      var maxSamples = 1024;
+      var arr;
+      if (floatArray.length > maxSamples * 2) {
+        var step = Math.floor(floatArray.length / (maxSamples * 2));
+        arr = [];
+        for (var k = 0; k < maxSamples; k++) {
+          var srcIdx = k * step * 2;
+          arr.push(floatArray[srcIdx]);
+          arr.push(floatArray[srcIdx + 1]);
+        }
+      } else {
+        arr = Array.from(floatArray);
+      }
+
+      if (layers[stream] === undefined) {
+        layers[stream] = plot.overlay_array(arr, {
+          xunits: "Real",
+          yunits: "Imag"
+        }, {
+          mode: 'XY',
+          symbol: 1,
+          line: 0,
+          radius: 1
+        });
+      } else {
+        plot.reload(layers[stream], arr);
+      }
+      return;
+    }
+
+    if (layers[stream] === undefined) return;
+    plot.push(layers[stream], floatArray);
+  }
+
+  // ── Header parsing ─────────────────────────────────────────────────
+  function parseHeader(dv) {
+    if (dv.byteLength < HEADER_SIZE) return null;
+
+    var magic = dv.getUint32(0, true);
+    if (magic !== MAGIC) return null;
+
+    var streamType  = dv.getUint8(4);
+    var dataFormat  = dv.getUint8(5);
+    // bytes 6-7 reserved
+
+    // center_freq is a signed 64-bit integer.
+    // DataView doesn't have getInt64, so we read low and high 32-bit words.
+    var lo = dv.getUint32(8, true);
+    var hi = dv.getInt32(12, true);
+    var centerFreq = hi * 0x100000000 + lo;
+
+    var sampleRate  = dv.getUint32(16, true);
+    var numSamples  = dv.getUint32(20, true);
+
+    return {
+      streamType: streamType,
+      streamName: STREAM_TYPES[streamType] || 'unknown',
+      dataFormat: dataFormat,
+      dataFormatName: DATA_FORMATS[dataFormat] || 'unknown',
+      centerFreq: centerFreq,
+      sampleRate: sampleRate,
+      numSamples: numSamples
+    };
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────
+  function setConnected(connected) {
+    if (connected) {
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Connected';
+      connectBtn.textContent = 'Disconnect';
+      connectBtn.classList.remove('connect');
+      connectBtn.classList.add('disconnect');
+    } else {
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Disconnected';
+      connectBtn.textContent = 'Connect';
+      connectBtn.classList.remove('disconnect');
+      connectBtn.classList.add('connect');
+    }
+  }
+
+  function connect() {
+    var url = wsUrlInput.value.trim();
+    if (!url) return;
+
+    log('Connecting to ' + url + '…', 'info');
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      log('Failed to create WebSocket: ' + e.message, 'error');
+      return;
+    }
+
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = function () {
+      setConnected(true);
+      log('Connection established', 'success');
+
+      // Re-subscribe to checked streams
+      ['spectrum', 'waterfall', 'audio', 'iq'].forEach(function (s) {
+        var chk = document.getElementById('chk' + s.charAt(0).toUpperCase() + s.slice(1));
+        if (chk && chk.checked) {
+          sendSubscribe(s);
+        }
+      });
+    };
+
+    ws.onclose = function (e) {
+      setConnected(false);
+      log('Connection closed (code ' + e.code + ')', 'info');
+      ws = null;
+    };
+
+    ws.onerror = function () {
+      log('WebSocket error', 'error');
+    };
+
+    ws.onmessage = function (evt) {
+      msgCount++;
+
+      if (typeof evt.data === 'string') {
+        handleTextMessage(evt.data);
+      } else if (evt.data instanceof ArrayBuffer) {
+        handleBinaryMessage(evt.data);
+      }
+    };
+  }
+
+  function disconnect() {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+    setConnected(false);
+  }
+
+  window.toggleConnection = function () {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      disconnect();
+    } else {
+      connect();
+    }
+  };
+
+  // ── Text (JSON) messages ───────────────────────────────────────────
+  function handleTextMessage(data) {
+    try {
+      var msg = JSON.parse(data);
+      if (msg.type === 'metadata') {
+        log('Metadata for ' + msg.stream + ': ' + JSON.stringify(msg), 'info');
+        updateMeta(msg.stream, msg);
+      } else {
+        log('Recv JSON: ' + data, 'info');
+      }
+    } catch (e) {
+      log('Non-JSON text message: ' + data, 'info');
+    }
+  }
+
+  function updateMeta(stream, meta) {
+    var el = document.getElementById(stream + 'Meta');
+    if (!el) return;
+    var parts = [];
+    if (meta.center_freq) parts.push(formatFreq(meta.center_freq));
+    if (meta.sample_rate) parts.push('SR: ' + formatHz(meta.sample_rate));
+    if (meta.fft_size) parts.push('FFT: ' + meta.fft_size);
+    el.textContent = parts.length ? parts.join(' | ') : '—';
+  }
+
+  // ── Binary messages ────────────────────────────────────────────────
+  function handleBinaryMessage(buf) {
+    var dv = new DataView(buf);
+    var hdr = parseHeader(dv);
+    if (!hdr) {
+      log('Invalid binary frame (bad magic or too short)', 'error');
+      return;
+    }
+
+    var bytesPerSample = BYTES_PER_SAMPLE[hdr.dataFormat] || 4;
+    var expectedPayload = hdr.numSamples * bytesPerSample;
+    if (buf.byteLength < HEADER_SIZE + expectedPayload) {
+      log('Truncated payload: expected ' + expectedPayload + ' bytes, got ' + (buf.byteLength - HEADER_SIZE), 'error');
+      return;
+    }
+
+    // Extract float32 samples from payload
+    var floatArray;
+    if (hdr.dataFormat === 0x02) {
+      // complex_float32: num_samples pairs of (re, im) → 2 * num_samples floats
+      floatArray = new Float32Array(buf, HEADER_SIZE, hdr.numSamples * 2);
+    } else {
+      floatArray = new Float32Array(buf, HEADER_SIZE, hdr.numSamples);
+    }
+
+    // Update meta display
+    var metaEl = document.getElementById(hdr.streamName + 'Meta');
+    if (metaEl) {
+      metaEl.textContent = formatFreq(hdr.centerFreq) + ' | SR: ' + formatHz(hdr.sampleRate) + ' | N: ' + hdr.numSamples;
+    }
+
+    // Ensure pipe exists and push data
+    ensurePipe(hdr.streamName, hdr.numSamples, hdr.centerFreq, hdr.sampleRate, hdr.dataFormat);
+    pushData(hdr.streamName, floatArray, hdr.dataFormat);
+  }
+
+  // ── Subscribe / unsubscribe ────────────────────────────────────────
+  function sendSubscribe(stream) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'subscribe', stream: stream }));
+      log('Subscribed to ' + stream, 'success');
+    }
+  }
+
+  function sendUnsubscribe(stream) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'unsubscribe', stream: stream }));
+      log('Unsubscribed from ' + stream, 'info');
+    }
+  }
+
+  window.toggleStream = function (stream, checked) {
+    if (checked) {
+      sendSubscribe(stream);
+    } else {
+      sendUnsubscribe(stream);
+    }
+  };
+
+  // ── Data rate tracking ─────────────────────────────────────────────
+  function startRateCounter() {
+    rateInterval = setInterval(function () {
+      dataRateEl.textContent = msgCount;
+      msgCount = 0;
+    }, 1000);
+  }
+
+  // ── Formatting helpers ─────────────────────────────────────────────
+  function formatFreq(hz) {
+    if (Math.abs(hz) >= 1e9) return (hz / 1e9).toFixed(6) + ' GHz';
+    if (Math.abs(hz) >= 1e6) return (hz / 1e6).toFixed(3) + ' MHz';
+    if (Math.abs(hz) >= 1e3) return (hz / 1e3).toFixed(1) + ' kHz';
+    return hz + ' Hz';
+  }
+  function formatHz(hz) {
+    if (hz >= 1e6) return (hz / 1e6).toFixed(2) + ' MHz';
+    if (hz >= 1e3) return (hz / 1e3).toFixed(1) + ' kHz';
+    return hz + ' Hz';
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', function () {
+    initPlots();
+    startRateCounter();
+    log('CubicSDR WebSocket Client ready. Enter server URL and click Connect.', 'info');
+  });
+
+  // Allow Enter key in URL input to connect
+  wsUrlInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      window.toggleConnection();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>

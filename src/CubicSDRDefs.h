@@ -71,3 +71,5 @@ const char filePathSeparator =
 //The maximum number of listed sample rates for a device, to be able to handle 
 //devices returning an insane amount because they have quasi-continuous ranges (UHD...)
 #define DEVICE_SAMPLE_RATES_MAX_NB     25
+
+#define DEFAULT_WS_PORT 9002

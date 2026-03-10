@@ -393,8 +393,40 @@ bool CubicSDR::OnInit() {
         t_DemodVisual = new std::thread(&SpectrumVisualDataThread::threadMain, demodVisualThread);
     }
 
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    // WebSocket server: create queues and wire into existing pipelines.
+    // IQ queue must be wired to SDRPostThread BEFORE it starts.
+    webSocketThread = new WebSocketServerThread();
+    webSocketThread->setPort(config.getWsPort());
+
+    pipeWSSpectrumData = std::make_shared<SpectrumVisualDataQueue>();
+    pipeWSSpectrumData->set_max_num_items(2);
+    webSocketThread->setSpectrumQueue(pipeWSSpectrumData);
+    getSpectrumProcessor()->attachOutput(pipeWSSpectrumData);
+
+    pipeWSWaterfallData = std::make_shared<SpectrumVisualDataQueue>();
+    pipeWSWaterfallData->set_max_num_items(2);
+    webSocketThread->setWaterfallQueue(pipeWSWaterfallData);
+
+    pipeWSAudioData = std::make_shared<DemodulatorThreadOutputQueue>();
+    pipeWSAudioData->set_max_num_items(2);
+    webSocketThread->setAudioQueue(pipeWSAudioData);
+    // TODO: Audio data wiring requires a VisualDataReDistributor<AudioThreadInput>
+    // to split pipeAudioVisualData between the ScopeVisualProcessor and this queue.
+    // For now, the audio WebSocket stream is a placeholder.
+
+    pipeWSIQData = std::make_shared<DemodulatorThreadInputQueue>();
+    pipeWSIQData->set_max_num_items(2);
+    webSocketThread->setIQQueue(pipeWSIQData);
+    sdrPostThread->setOutputQueue("IQWebSocketDataOutput", pipeWSIQData);
+#endif
+
     //Start SDRPostThread last.
     t_PostSDR = new std::thread(&SDRPostThread::threadMain, sdrPostThread);
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    t_WebSocket = new std::thread(&WebSocketServerThread::threadMain, webSocketThread);
+#endif
     
 
     sdrEnum = new SDREnumerator();
@@ -475,6 +507,17 @@ int CubicSDR::OnExit() {
     if (demodVisualThread) {
         demodVisualThread->terminate();
     }
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    std::cout << "Terminating WebSocket server thread.." << std::endl << std::flush;
+    if (webSocketThread) {
+        webSocketThread->terminate();
+        if (pipeWSSpectrumData) { pipeWSSpectrumData->flush(); }
+        if (pipeWSWaterfallData) { pipeWSWaterfallData->flush(); }
+        if (pipeWSIQData) { pipeWSIQData->flush(); }
+        if (pipeWSAudioData) { pipeWSAudioData->flush(); }
+    }
+#endif
     
     //Wait nicely
     terminationSequenceOK = terminationSequenceOK &&  spectrumVisualThread->isTerminated(1000);
@@ -482,6 +525,12 @@ int CubicSDR::OnExit() {
     if (demodVisualThread) {
         terminationSequenceOK = terminationSequenceOK && demodVisualThread->isTerminated(1000);
     }
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    if (webSocketThread) {
+        terminationSequenceOK = terminationSequenceOK && webSocketThread->isTerminated(3000);
+    }
+#endif
 
     //in case termination sequence goes wrong, kill App brutally because it can get stuck. 
     if (!terminationSequenceOK) {
@@ -501,6 +550,12 @@ int CubicSDR::OnExit() {
     }
     
     t_SpectrumVisual->join();
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    if (t_WebSocket) {
+        t_WebSocket->join();
+    }
+#endif
 
     //Now only we can delete:
     delete t_SDR;
@@ -526,6 +581,14 @@ int CubicSDR::OnExit() {
 
     delete demodVisualThread;
     demodVisualThread = nullptr;
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    delete t_WebSocket;
+    t_WebSocket = nullptr;
+
+    delete webSocketThread;
+    webSocketThread = nullptr;
+#endif
 
     delete m_glContext;
     m_glContext = nullptr;
@@ -1200,4 +1263,10 @@ bool CubicSDR::rigIsActive() {
     return (rigThread && !rigThread->isTerminated());
 }
 
+#endif
+
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+WebSocketServerThread *CubicSDR::getWebSocketThread() {
+    return webSocketThread;
+}
 #endif

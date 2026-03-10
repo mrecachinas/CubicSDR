@@ -145,6 +145,12 @@ public:
     
     void setBookmarksVisible(bool state);
     bool getBookmarksVisible();
+
+    void setWsPort(int port);
+    int getWsPort();
+
+    void setWsEnabled(bool enabled);
+    bool getWsEnabled();
     
 	//Recording settings:
     void setRecordingPath(std::string recPath);
@@ -203,6 +209,9 @@ private:
     std::atomic_int dbOffset{};
     std::vector<SDRManualDef> manualDevices;
     std::atomic_bool bookmarksVisible{};
+
+    std::atomic_int wsPort{};
+    std::atomic_bool wsEnabled{};
 
     std::atomic<PerfModeEnum> perfMode{};
 

@@ -321,6 +321,8 @@ AppConfig::AppConfig() {
 #else
     bookmarksVisible.store(true);
 #endif
+    wsPort.store(DEFAULT_WS_PORT);
+    wsEnabled.store(true);
     
 #ifdef USE_HAMLIB
     rigEnabled.store(false);
@@ -505,6 +507,22 @@ bool AppConfig::getBookmarksVisible() {
     return bookmarksVisible.load();
 }
 
+void AppConfig::setWsPort(int port) {
+    wsPort.store(port);
+}
+
+int AppConfig::getWsPort() {
+    return wsPort.load();
+}
+
+void AppConfig::setWsEnabled(bool enabled) {
+    wsEnabled.store(enabled);
+}
+
+bool AppConfig::getWsEnabled() {
+    return wsEnabled.load();
+}
+
 void AppConfig::setRecordingPath(std::string recPath) {
     recordingPath = recPath;
 }
@@ -602,6 +620,9 @@ bool AppConfig::save() {
         *window_node->newChild("vis_split") = visSplit.load();
         *window_node->newChild("bookmark_split") = bookmarkSplit.load();
         *window_node->newChild("bookmark_visible") = bookmarksVisible.load();
+
+        *window_node->newChild("ws_port") = wsPort.load();
+        *window_node->newChild("ws_enabled") = wsEnabled.load();
     }
     
 	//Recording settings:
@@ -797,6 +818,18 @@ bool AppConfig::load() {
             int bVal;
             win_node->getNext("bookmark_visible")->element()->get(bVal);
             bookmarksVisible.store(bVal);
+        }
+
+        if (win_node->hasAnother("ws_port")) {
+            int portVal = DEFAULT_WS_PORT;
+            win_node->getNext("ws_port")->element()->get(portVal);
+            wsPort.store(portVal);
+        }
+
+        if (win_node->hasAnother("ws_enabled")) {
+            int wsVal = 1;
+            win_node->getNext("ws_enabled")->element()->get(wsVal);
+            wsEnabled.store(wsVal != 0);
         }
     }
     

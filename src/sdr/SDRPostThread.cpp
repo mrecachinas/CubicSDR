@@ -14,6 +14,9 @@ SDRPostThread::SDRPostThread() : IOThread(), buffers("SDRPostThreadBuffers"), vi
     iqDataInQueue = nullptr;
     iqDataOutQueue = nullptr;
     iqVisualQueue = nullptr;
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    iqWebSocketQueue = nullptr;
+#endif
 
     numChannels = 0;
     channelizer = nullptr;
@@ -163,6 +166,9 @@ void SDRPostThread::run() {
     iqDataOutQueue = std::static_pointer_cast<DemodulatorThreadInputQueue>(getOutputQueue("IQDataOutput"));
     iqVisualQueue = std::static_pointer_cast<DemodulatorThreadInputQueue>(getOutputQueue("IQVisualDataOutput"));
     iqActiveDemodVisualQueue = std::static_pointer_cast<DemodulatorThreadInputQueue>(getOutputQueue("IQActiveDemodVisualDataOutput"));
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    iqWebSocketQueue = std::static_pointer_cast<DemodulatorThreadInputQueue>(getOutputQueue("IQWebSocketDataOutput"));
+#endif
     
     while (!stopping) {
         SDRThreadIQDataPtr data_in;
@@ -204,6 +210,9 @@ void SDRPostThread::run() {
     iqDataInQueue->flush();
     iqDataOutQueue->flush();
     iqActiveDemodVisualQueue->flush();
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    if (iqWebSocketQueue) { iqWebSocketQueue->flush(); }
+#endif
 
 //    std::cout << "SDR post-processing thread done." << std::endl;
 }
@@ -215,6 +224,9 @@ void SDRPostThread::terminate() {
     iqDataInQueue->flush();
     iqDataOutQueue->flush();
     iqActiveDemodVisualQueue->flush();
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+    if (iqWebSocketQueue) { iqWebSocketQueue->flush(); }
+#endif
 }
 
 // Copy the full badwidth into a new DemodulatorThreadIQDataPtr.
@@ -241,6 +253,11 @@ void SDRPostThread::pushVisualData(const DemodulatorThreadIQDataPtr& iqDataOut) 
             //non-blocking push here, we can afford to loose some samples for a ever-changing visual display.
             iqVisualQueue->try_push(iqDataOut);
         }
+#ifdef CUBICSDR_ENABLE_WEBSOCKET
+        if (iqWebSocketQueue != nullptr) {
+            iqWebSocketQueue->try_push(iqDataOut);
+        }
+#endif
     }
 }
 
